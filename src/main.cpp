@@ -8,7 +8,7 @@
 #define NUM_LEDS      100 // 100 grupos de 3 leds
 #define BRIGHTNESS    255
 #define LED_TYPE      WS2811
-#define COLOR_ORDER   RGB
+#define COLOR_ORDER   GRB
 
 // Configurações das Pistas
 #define NUM_PISTAS     5
@@ -226,8 +226,25 @@ void verificarJogada() {
   bool lerGreen = digitalRead(BTN_GREEN);
   bool lerBlue = digitalRead(BTN_BLUE);
 
+  // Variáveis para indicar clique (físico ou serial)
+  bool clickRed = (lerRed == LOW && antRed == HIGH);
+  bool clickGreen = (lerGreen == LOW && antGreen == HIGH);
+  bool clickBlue = (lerBlue == LOW && antBlue == HIGH);
+
+  // Verifica se há comandos chegando pela Ponte Serial
+  while (Serial.available() > 0) {
+    char cmd = Serial.read();
+    if (cmd == 'R') {
+      clickRed = true;
+    } else if (cmd == 'G') {
+      clickGreen = true;
+    } else if (cmd == 'B') {
+      clickBlue = true;
+    }
+  }
+
   // Botão Vermelho (Pista 0)
-  if (lerRed == LOW && antRed == HIGH) {
+  if (clickRed) {
     int idx19 = obterIndiceLED(0, 19);
     int idx18 = obterIndiceLED(0, 18);
     if (leds[idx19] == CRGB::Red || leds[idx18] == CRGB::Red) {
@@ -238,7 +255,7 @@ void verificarJogada() {
   }
 
   // Botão Verde (Pista 1)
-  if (lerGreen == LOW && antGreen == HIGH) {
+  if (clickGreen) {
     int idx19 = obterIndiceLED(1, 19);
     int idx18 = obterIndiceLED(1, 18);
     if (leds[idx19] == CRGB::Green || leds[idx18] == CRGB::Green) {
@@ -249,7 +266,7 @@ void verificarJogada() {
   }
 
   // Botão Azul (Pista 2)
-  if (lerBlue == LOW && antBlue == HIGH) {
+  if (clickBlue) {
     int idx19 = obterIndiceLED(2, 19);
     int idx18 = obterIndiceLED(2, 18);
     if (leds[idx19] == CRGB::Blue || leds[idx18] == CRGB::Blue) {
