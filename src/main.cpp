@@ -5,24 +5,20 @@
 
 // Configurações da Fita LED
 #define LED_PIN       13
-#define NUM_LEDS      100 // 100 grupos de 3 leds
+#define NUM_LEDS      79 // 19 + 20 + 20 + 20 = 79 leds
 #define BRIGHTNESS    255
 #define LED_TYPE      WS2811
 #define COLOR_ORDER   GRB
 
 // Configurações das Pistas
-#define NUM_PISTAS     5
-#define LEDS_POR_PISTA 20
+#define NUM_PISTAS     4
 
 // Configurações dos Botões
 #define BTN_START     4
-#define BTN_RED       5
 #define BTN_GREEN     6
+#define BTN_YELLOW    16
+#define BTN_RED       5
 #define BTN_BLUE      7
-
-// Configurações dos pinos para futura expansão (Pistas 4 e 5)
-// #define BTN_YELLOW  16
-// #define BTN_ORANGE  17
 
 // Configuração do Buzzer
 #define BUZZER_PIN    15
@@ -52,8 +48,9 @@ int chanceDeNota = 12; // Probabilidade de gerar uma nota nova por pista (em %)
 
 // Estados anteriores dos botões para detecção de clique (borda de descida)
 bool antStart = HIGH;
-bool antRed = HIGH;
 bool antGreen = HIGH;
+bool antYellow = HIGH;
+bool antRed = HIGH;
 bool antBlue = HIGH;
 
 // Protótipos das funções para o compilador
@@ -96,8 +93,9 @@ void setup() {
 
   // Inicializa Botões com Pull-up interno (pressionado = LOW)
   pinMode(BTN_START, INPUT_PULLUP);
-  pinMode(BTN_RED, INPUT_PULLUP);
   pinMode(BTN_GREEN, INPUT_PULLUP);
+  pinMode(BTN_YELLOW, INPUT_PULLUP);
+  pinMode(BTN_RED, INPUT_PULLUP);
   pinMode(BTN_BLUE, INPUT_PULLUP);
 
   mostrarMenuInicial();
@@ -152,27 +150,28 @@ void somGameOver() {
   delay(400);
 }
 
-// Retorna o índice físico do LED com base na pista (0 a 4) e no passo lógico (0 a 19)
-// 0 é o topo (onde a nota surge) e 19 é o final (zona de impacto / Hit Zone)
+// Retorna o índice físico do LED com base na pista (0 a 3) e no passo lógico
+// pista 0: Verde, pista 1: Amarela, pista 2: Vermelha, pista 3: Azul
+// Para pista 0, passo vai de 0 a 18 (19 leds). Para as demais, de 0 a 19 (20 leds).
 int obterIndiceLED(int pista, int passo) {
-  // Padrão: Pistas paralelas com a mesma orientação física
-  return (pista * LEDS_POR_PISTA) + passo;
-  
-  // OPCIONAL: Se a sua fita foi montada em zigue-zague (serpentina)
-  // Descomente as linhas abaixo e comente o "return" acima:
-  /*
-  if (pista % 2 == 1) {
-    return (pista * LEDS_POR_PISTA) + (19 - passo);
-  } else {
-    return (pista * LEDS_POR_PISTA) + passo;
+  int inicio = 0;
+  if (pista == 0) {
+    inicio = 0;
+  } else if (pista == 1) {
+    inicio = 19;
+  } else if (pista == 2) {
+    inicio = 39;
+  } else if (pista == 3) {
+    inicio = 59;
   }
-  */
+  return inicio + passo;
 }
 
-// Desenha a linha de mira visual fraca no LED 17 para orientar o jogador
+// Desenha a linha de mira visual fraca para orientar o jogador
 void desenharCenario() {
-  for (int pista = 0; pista < 3; pista++) {
-    int idxMira = obterIndiceLED(pista, 17);
+  for (int pista = 0; pista < 4; pista++) {
+    int passoMira = (pista == 0) ? 16 : 17;
+    int idxMira = obterIndiceLED(pista, passoMira);
     if (leds[idxMira] == CRGB::Black) {
       leds[idxMira] = CRGB(15, 15, 15); // Linha cinza fraca
     }
@@ -181,13 +180,15 @@ void desenharCenario() {
 
 // Move as notas nas pistas ativas
 void moverNotas() {
-  // 1. Detectar notas que chegaram ao fim da pista (passo 19) e passaram sem clique (miss)
-  for (int pista = 0; pista < 3; pista++) {
-    int idxFim = obterIndiceLED(pista, 19);
+  // 1. Detectar notas que chegaram ao fim da pista e passaram sem clique (miss)
+  for (int pista = 0; pista < 4; pista++) {
+    int passoFim = (pista == 0) ? 18 : 19;
+    int idxFim = obterIndiceLED(pista, passoFim);
     CRGB corNota = leds[idxFim];
-    if ((pista == 0 && corNota == CRGB::Red) ||
-        (pista == 1 && corNota == CRGB::Green) ||
-        (pista == 2 && corNota == CRGB::Blue)) {
+    if ((pista == 0 && corNota == CRGB::Green) ||
+        (pista == 1 && corNota == CRGB::Yellow) ||
+        (pista == 2 && corNota == CRGB::Red) ||
+        (pista == 3 && corNota == CRGB::Blue)) {
       perdeuNota();
     }
   }
@@ -195,9 +196,10 @@ void moverNotas() {
   // Se o jogo acabou por falta de vidas na verificação anterior, interrompe
   if (estadoAtual == ESTADO_GAME_OVER) return;
 
-  // 2. Desloca as notas um passo para a frente (de 19 decrescendo até 1)
+  // 2. Desloca as notas um passo para a frente
   for (int pista = 0; pista < NUM_PISTAS; pista++) {
-    for (int passo = 19; passo > 0; passo--) {
+    int passoFim = (pista == 0) ? 18 : 19;
+    for (int passo = passoFim; passo > 0; passo--) {
       int idxAtual = obterIndiceLED(pista, passo);
       int idxAnterior = obterIndiceLED(pista, passo - 1);
       leds[idxAtual] = leds[idxAnterior];
@@ -205,11 +207,11 @@ void moverNotas() {
     
     // 3. Gera nota no início da pista (passo 0) aleatoriamente
     int idxInicio = obterIndiceLED(pista, 0);
-    // Ativa geração de notas apenas nas 3 primeiras pistas por enquanto
-    if (pista < 3 && random(0, 100) < chanceDeNota) {
-      if (pista == 0) leds[idxInicio] = CRGB::Red;
-      else if (pista == 1) leds[idxInicio] = CRGB::Green;
-      else if (pista == 2) leds[idxInicio] = CRGB::Blue;
+    if (random(0, 100) < chanceDeNota) {
+      if (pista == 0) leds[idxInicio] = CRGB::Green;
+      else if (pista == 1) leds[idxInicio] = CRGB::Yellow;
+      else if (pista == 2) leds[idxInicio] = CRGB::Red;
+      else if (pista == 3) leds[idxInicio] = CRGB::Blue;
     } else {
       leds[idxInicio] = CRGB::Black;
     }
@@ -222,62 +224,78 @@ void moverNotas() {
 
 // Verifica cliques nos botões de cor e valida contra a Hit Zone (passos 18 e 19)
 void verificarJogada() {
-  bool lerRed = digitalRead(BTN_RED);
   bool lerGreen = digitalRead(BTN_GREEN);
+  bool lerYellow = digitalRead(BTN_YELLOW);
+  bool lerRed = digitalRead(BTN_RED);
   bool lerBlue = digitalRead(BTN_BLUE);
 
   // Variáveis para indicar clique (físico ou serial)
-  bool clickRed = (lerRed == LOW && antRed == HIGH);
   bool clickGreen = (lerGreen == LOW && antGreen == HIGH);
+  bool clickYellow = (lerYellow == LOW && antYellow == HIGH);
+  bool clickRed = (lerRed == LOW && antRed == HIGH);
   bool clickBlue = (lerBlue == LOW && antBlue == HIGH);
 
   // Verifica se há comandos chegando pela Ponte Serial
   while (Serial.available() > 0) {
     char cmd = Serial.read();
-    if (cmd == 'R') {
-      clickRed = true;
-    } else if (cmd == 'G') {
+    if (cmd == 'G') {
       clickGreen = true;
+    } else if (cmd == 'Y') {
+      clickYellow = true;
+    } else if (cmd == 'R') {
+      clickRed = true;
     } else if (cmd == 'B') {
       clickBlue = true;
     }
   }
 
-  // Botão Vermelho (Pista 0)
-  if (clickRed) {
-    int idx19 = obterIndiceLED(0, 19);
+  // Pista 0: Verde (Green)
+  if (clickGreen) {
     int idx18 = obterIndiceLED(0, 18);
-    if (leds[idx19] == CRGB::Red || leds[idx18] == CRGB::Red) {
+    int idx17 = obterIndiceLED(0, 17);
+    if (leds[idx18] == CRGB::Green || leds[idx17] == CRGB::Green) {
       acertouNota(0);
     } else {
       errouNota(0);
     }
   }
 
-  // Botão Verde (Pista 1)
-  if (clickGreen) {
+  // Pista 1: Amarela (Yellow)
+  if (clickYellow) {
     int idx19 = obterIndiceLED(1, 19);
     int idx18 = obterIndiceLED(1, 18);
-    if (leds[idx19] == CRGB::Green || leds[idx18] == CRGB::Green) {
+    if (leds[idx19] == CRGB::Yellow || leds[idx18] == CRGB::Yellow) {
       acertouNota(1);
     } else {
       errouNota(1);
     }
   }
 
-  // Botão Azul (Pista 2)
-  if (clickBlue) {
+  // Pista 2: Vermelha (Red)
+  if (clickRed) {
     int idx19 = obterIndiceLED(2, 19);
     int idx18 = obterIndiceLED(2, 18);
-    if (leds[idx19] == CRGB::Blue || leds[idx18] == CRGB::Blue) {
+    if (leds[idx19] == CRGB::Red || leds[idx18] == CRGB::Red) {
       acertouNota(2);
     } else {
       errouNota(2);
     }
   }
 
-  antRed = lerRed;
+  // Pista 3: Azul (Blue)
+  if (clickBlue) {
+    int idx19 = obterIndiceLED(3, 19);
+    int idx18 = obterIndiceLED(3, 18);
+    if (leds[idx19] == CRGB::Blue || leds[idx18] == CRGB::Blue) {
+      acertouNota(3);
+    } else {
+      errouNota(3);
+    }
+  }
+
   antGreen = lerGreen;
+  antYellow = lerYellow;
+  antRed = lerRed;
   antBlue = lerBlue;
 }
 
@@ -286,15 +304,16 @@ void acertouNota(int pista) {
   pontuacao += 10;
   
   // Limpa a nota acertada substituindo por um brilho branco (feedback visual)
-  int idx19 = obterIndiceLED(pista, 19);
-  int idx18 = obterIndiceLED(pista, 18);
-  leds[idx19] = CRGB::White;
-  leds[idx18] = CRGB::White;
+  int passoFim = (pista == 0) ? 18 : 19;
+  int idxFim = obterIndiceLED(pista, passoFim);
+  int idxFimMenos1 = obterIndiceLED(pista, passoFim - 1);
+  leds[idxFim] = CRGB::White;
+  leds[idxFimMenos1] = CRGB::White;
   FastLED.show();
   
   // Logo após o show, reseta para preto para que a nota não persista
-  leds[idx19] = CRGB::Black;
-  leds[idx18] = CRGB::Black;
+  leds[idxFim] = CRGB::Black;
+  leds[idxFimMenos1] = CRGB::Black;
   
   emitirSom(1000, 50); // Beep agudo de sucesso
   
@@ -310,10 +329,11 @@ void errouNota(int pista) {
   if (vidas > 0) vidas--;
 
   // Sinalização visual de erro na pista (pisca vermelho)
-  int idx19 = obterIndiceLED(pista, 19);
-  int idx18 = obterIndiceLED(pista, 18);
-  leds[idx19] = CRGB(100, 0, 0); 
-  leds[idx18] = CRGB(100, 0, 0);
+  int passoFim = (pista == 0) ? 18 : 19;
+  int idxFim = obterIndiceLED(pista, passoFim);
+  int idxFimMenos1 = obterIndiceLED(pista, passoFim - 1);
+  leds[idxFim] = CRGB(100, 0, 0); 
+  leds[idxFimMenos1] = CRGB(100, 0, 0);
   FastLED.show();
 
   emitirSom(150, 150); // Som de erro grave (buzz)
