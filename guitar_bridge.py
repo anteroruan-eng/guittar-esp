@@ -8,17 +8,17 @@ import sys
 # ==============================================================================
 # Defina a porta COM correspondente ao seu ESP32-S3 no computador.
 # Exemplos: "COM3", "COM4" no Windows ou "/dev/ttyACM0", "/dev/ttyUSB0" no Linux/macOS.
-PORTA_SERIAL = "COM3"
+PORTA_SERIAL = "COM4"
 BAUD_RATE = 115200
 
 # Mapeamento dos botões da guitarra para os caracteres correspondentes.
 # Se o seu adaptador mapear os botões físicos (Vermelho, Verde, Azul) para outros
 # índices no Pygame, altere estes valores.
 # DICA: Pressione os botões no terminal para ver os logs com os IDs reais!
-BOTAO_VERDE_IDX = 0      # Geralmente botão 0 ou 2 (Verde -> 'G')
+BOTAO_VERDE_IDX = 7      # Geralmente botão 0 ou 2 (Verde -> 'G')
 BOTAO_VERMELHO_IDX = 1   # Geralmente botão 1 ou 3 (Vermelho -> 'R')
 BOTAO_AZUL_IDX = 2       # Geralmente botão 2 ou 0 (Azul -> 'B')
-BOTAO_AMARELO_IDX = 3    # Geralmente botão 3 (Amarelo -> 'Y')
+BOTAO_AMARELO_IDX = 0    # Geralmente botão 3 (Amarelo -> 'Y')
 # ==============================================================================
 
 # Inicialização do Pygame e subsistema de Joystick
