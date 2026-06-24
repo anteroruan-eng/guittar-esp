@@ -45,6 +45,31 @@ int vidas = 5;
 unsigned long ultimoMovimento = 0;
 int velocidade = 300; // Tempo em milissegundos para a nota descer 1 bloco (inicia em 300ms)
 int chanceDeNota = 5; // Probabilidade inicial de gerar uma nota nova por pista (em %)
+const char* ultimoAcerto = "";
+
+// Variáveis para comunicação Serial (Ponte)
+bool clickGreenSerial = false;
+bool clickYellowSerial = false;
+bool clickRedSerial = false;
+bool clickBlueSerial = false;
+bool clickStartSerial = false;
+
+// Variáveis e Definições da Música de Fundo (Buzzer)
+const int melodiaNotas[] = {
+  220, 220, 262, 294, 220, 220, 262, 330, 294,
+  220, 220, 262, 294, 262, 220, 0
+};
+const int melodiaTempos[] = {
+  150, 150, 300, 300, 150, 150, 150, 150, 300,
+  150, 150, 300, 300, 300, 300, 300
+};
+const int NUM_NOTAS_MELODIA = sizeof(melodiaNotas) / sizeof(melodiaNotas[0]);
+
+int notaAtualMelodia = 0;
+unsigned long tempoInicioNota = 0;
+unsigned long duracaoNotaAtual = 0;
+unsigned long tempoFimInterrupcao = 0;
+bool emInterrupcaoSom = false;
 
 // Estados anteriores dos botões para detecção de clique (borda de descida)
 bool antStart = HIGH;
@@ -55,12 +80,14 @@ bool antBlue = HIGH;
 
 // Protótipos das funções para o compilador
 void emitirSom(unsigned int frequencia, unsigned long duracao);
+void processarMusicaDeFundo();
+void lerSerial();
 void somInicio();
 void somGameOver();
 int obterIndiceLED(int pista, int passo);
 void moverNotas();
 void verificarJogada();
-void acertouNota(int pista);
+void acertouNota(int pista, int passoAcerto);
 void errouNota(int pista);
 void perdeuNota();
 void verificarBotaoStart();
@@ -102,6 +129,10 @@ void setup() {
 }
 
 void loop() {
+  // 1. Processa comandos da Ponte Serial
+  lerSerial();
+
+  // 2. Gerenciamento do botão Start/Stop
   verificarBotaoStart();
 
   if (estadoAtual == ESTADO_JOGANDO) {
@@ -118,6 +149,12 @@ void loop() {
 
     // 2. Verifica se o jogador acertou no tempo correto
     verificarJogada();
+
+    // 3. Processa a música de fundo continuamente
+    processarMusicaDeFundo();
+  } else {
+    // Se o jogo não está rodando (menu, pause, game over), desliga o som
+    noTone(BUZZER_PIN);
   }
 }
 
@@ -233,64 +270,76 @@ void verificarJogada() {
   bool lerBlue = digitalRead(BTN_BLUE);
 
   // Variáveis para indicar clique (físico ou serial)
-  bool clickGreen = (lerGreen == LOW && antGreen == HIGH);
-  bool clickYellow = (lerYellow == LOW && antYellow == HIGH);
-  bool clickRed = (lerRed == LOW && antRed == HIGH);
-  bool clickBlue = (lerBlue == LOW && antBlue == HIGH);
+  bool clickGreen = (lerGreen == LOW && antGreen == HIGH) || clickGreenSerial;
+  bool clickYellow = (lerYellow == LOW && antYellow == HIGH) || clickYellowSerial;
+  bool clickRed = (lerRed == LOW && antRed == HIGH) || clickRedSerial;
+  bool clickBlue = (lerBlue == LOW && antBlue == HIGH) || clickBlueSerial;
 
-  // Verifica se há comandos chegando pela Ponte Serial
-  while (Serial.available() > 0) {
-    char cmd = Serial.read();
-    if (cmd == 'G') {
-      clickGreen = true;
-    } else if (cmd == 'Y') {
-      clickYellow = true;
-    } else if (cmd == 'R') {
-      clickRed = true;
-    } else if (cmd == 'B') {
-      clickBlue = true;
-    }
-  }
+  // Consome/limpa as flags seriais
+  clickGreenSerial = false;
+  clickYellowSerial = false;
+  clickRedSerial = false;
+  clickBlueSerial = false;
 
-  // Pista 0: Verde (Green)
+  // Pista 0: Verde (Green) - Zonas: 18 (Perfeito), 17 (Ótimo), 16 (Bom)
   if (clickGreen) {
     int idx18 = obterIndiceLED(0, 18);
     int idx17 = obterIndiceLED(0, 17);
-    if (leds[idx18] == CRGB::Green || leds[idx17] == CRGB::Green) {
-      acertouNota(0);
+    int idx16 = obterIndiceLED(0, 16);
+    if (leds[idx18] == CRGB::Green) {
+      acertouNota(0, 18);
+    } else if (leds[idx17] == CRGB::Green) {
+      acertouNota(0, 17);
+    } else if (leds[idx16] == CRGB::Green) {
+      acertouNota(0, 16);
     } else {
       errouNota(0);
     }
   }
 
-  // Pista 1: Vermelha (Red)
+  // Pista 1: Vermelha (Red) - Zonas: 19 (Perfeito), 18 (Ótimo), 17 (Bom)
   if (clickRed && NUM_PISTAS > 1) {
     int idx19 = obterIndiceLED(1, 19);
     int idx18 = obterIndiceLED(1, 18);
-    if (leds[idx19] == CRGB::Red || leds[idx18] == CRGB::Red) {
-      acertouNota(1);
+    int idx17 = obterIndiceLED(1, 17);
+    if (leds[idx19] == CRGB::Red) {
+      acertouNota(1, 19);
+    } else if (leds[idx18] == CRGB::Red) {
+      acertouNota(1, 18);
+    } else if (leds[idx17] == CRGB::Red) {
+      acertouNota(1, 17);
     } else {
       errouNota(1);
     }
   }
 
-  // Pista 2: Amarela (Yellow)
+  // Pista 2: Amarela (Yellow) - Zonas: 19 (Perfeito), 18 (Ótimo), 17 (Bom)
   if (clickYellow && NUM_PISTAS > 2) {
     int idx19 = obterIndiceLED(2, 19);
     int idx18 = obterIndiceLED(2, 18);
-    if (leds[idx19] == CRGB::Yellow || leds[idx18] == CRGB::Yellow) {
-      acertouNota(2);
+    int idx17 = obterIndiceLED(2, 17);
+    if (leds[idx19] == CRGB::Yellow) {
+      acertouNota(2, 19);
+    } else if (leds[idx18] == CRGB::Yellow) {
+      acertouNota(2, 18);
+    } else if (leds[idx17] == CRGB::Yellow) {
+      acertouNota(2, 17);
     } else {
       errouNota(2);
     }
   }
 
-  // Pista 3: Azul (Blue)
+  // Pista 3: Azul (Blue) - Zonas: 19 (Perfeito), 18 (Ótimo), 17 (Bom)
   if (clickBlue && NUM_PISTAS > 3) {
     int idx19 = obterIndiceLED(3, 19);
     int idx18 = obterIndiceLED(3, 18);
-    if (leds[idx19] == CRGB::Blue || leds[idx18] == CRGB::Blue) {
-      acertouNota(3);
+    int idx17 = obterIndiceLED(3, 17);
+    if (leds[idx19] == CRGB::Blue) {
+      acertouNota(3, 19);
+    } else if (leds[idx18] == CRGB::Blue) {
+      acertouNota(3, 18);
+    } else if (leds[idx17] == CRGB::Blue) {
+      acertouNota(3, 17);
     } else {
       errouNota(3);
     }
@@ -303,22 +352,40 @@ void verificarJogada() {
 }
 
 // Ações quando o jogador acerta o timing da nota
-void acertouNota(int pista) {
-  pontuacao += 10;
-  
-  // Limpa a nota acertada substituindo por um brilho branco (feedback visual)
+void acertouNota(int pista, int passoAcerto) {
   int passoFim = (pista == 0) ? 18 : 19;
-  int idxFim = obterIndiceLED(pista, passoFim);
-  int idxFimMenos1 = obterIndiceLED(pista, passoFim - 1);
-  leds[idxFim] = CRGB::White;
-  leds[idxFimMenos1] = CRGB::White;
+  int diferenca = passoFim - passoAcerto; // 0 = no último, 1 = no penúltimo, 2 = no antepenúltimo
+  
+  int pontosGanhos = 0;
+  int somFrequencia = 700;
+  if (diferenca == 0) {
+    pontosGanhos = 15;      // Perfeito (último LED)
+    somFrequencia = 1000;   // Som mais agudo e forte
+    ultimoAcerto = "PERF";
+  } else if (diferenca == 1) {
+    pontosGanhos = 10;      // Ótimo (penúltimo LED)
+    somFrequencia = 880;
+    ultimoAcerto = "GREAT";
+  } else {
+    pontosGanhos = 5;       // Bom (antepenúltimo LED)
+    somFrequencia = 700;
+    ultimoAcerto = "GOOD";
+  }
+  
+  pontuacao += pontosGanhos;
+  
+  // Limpa a nota acertada substituindo por um brilho branco no local exato do acerto
+  int idxHit = obterIndiceLED(pista, passoAcerto);
+  leds[idxHit] = CRGB::White;
   FastLED.show();
   
   // Logo após o show, reseta para preto para que a nota não persista
-  leds[idxFim] = CRGB::Black;
-  leds[idxFimMenos1] = CRGB::Black;
+  leds[idxHit] = CRGB::Black;
   
-  emitirSom(1000, 50); // Beep agudo de sucesso
+  // Interrompe a música de fundo para tocar o som correspondente à qualidade do acerto
+  emInterrupcaoSom = true;
+  tempoFimInterrupcao = millis() + 150;
+  tone(BUZZER_PIN, somFrequencia);
   
   atualizarVelocidade();
   atualizarPlacar();
@@ -326,9 +393,6 @@ void acertouNota(int pista) {
 
 // Ações quando o jogador clica sem ter nota na zona de acerto (erro)
 void errouNota(int pista) {
-  if (pontuacao > 5) pontuacao -= 5;
-  else pontuacao = 0;
-  
   if (vidas > 0) vidas--;
 
   // Sinalização visual de erro na pista (pisca vermelho)
@@ -339,7 +403,11 @@ void errouNota(int pista) {
   leds[idxFimMenos1] = CRGB(100, 0, 0);
   FastLED.show();
 
-  emitirSom(150, 150); // Som de erro grave (buzz)
+  // Interrompe para tocar som de erro grave por 150ms
+  emInterrupcaoSom = true;
+  tempoFimInterrupcao = millis() + 150;
+  tone(BUZZER_PIN, 150);
+  ultimoAcerto = "MISS";
   
   if (vidas <= 0) {
     estadoAtual = ESTADO_GAME_OVER;
@@ -352,12 +420,13 @@ void errouNota(int pista) {
 
 // Ações quando uma nota passa da zona sem ser clicada
 void perdeuNota() {
-  if (pontuacao > 2) pontuacao -= 2;
-  else pontuacao = 0;
-  
   if (vidas > 0) vidas--;
 
-  emitirSom(100, 50); // Som discreto de nota perdida
+  // Interrompe para tocar som discreto de nota perdida por 50ms
+  emInterrupcaoSom = true;
+  tempoFimInterrupcao = millis() + 50;
+  tone(BUZZER_PIN, 100);
+  ultimoAcerto = "MISS";
 
   if (vidas <= 0) {
     estadoAtual = ESTADO_GAME_OVER;
@@ -371,9 +440,17 @@ void perdeuNota() {
 // Gerenciamento do botão Start/Stop (Branco)
 void verificarBotaoStart() {
   bool lerStart = digitalRead(BTN_START);
-
+  bool clickStartFisico = false;
   if (lerStart == LOW && antStart == HIGH) {
-    delay(50); // Debounce
+    delay(30); // Debounce físico (aguarda ruído estabilizar)
+    if (digitalRead(BTN_START) == LOW) {
+      clickStartFisico = true;
+    }
+  }
+  bool clickStart = clickStartFisico || clickStartSerial;
+  clickStartSerial = false; // Consome flag serial
+
+  if (clickStart) {
     
     if (estadoAtual == ESTADO_MENU) {
       // Começa novo jogo
@@ -381,7 +458,12 @@ void verificarBotaoStart() {
       vidas = 5;
       velocidade = 300;
       chanceDeNota = 5;
+      ultimoAcerto = "";
       estadoAtual = ESTADO_JOGANDO;
+      notaAtualMelodia = 0;
+      tempoInicioNota = millis();
+      duracaoNotaAtual = 0;
+      emInterrupcaoSom = false;
       FastLED.clear();
       desenharCenario();
       FastLED.show();
@@ -437,7 +519,10 @@ void atualizarPlacar() {
     lcd.print(vidas);
     
     lcd.setCursor(0, 1);
-    lcd.print("VELOCIDADE: Lv.");
+    lcd.print(ultimoAcerto);
+    
+    lcd.setCursor(11, 1);
+    lcd.print("Lv.");
     lcd.print(obterLevel());
   } 
   else if (estadoAtual == ESTADO_GAME_OVER) {
@@ -477,4 +562,64 @@ int obterLevel() {
   if (pontuacao < 400) return 3;
   if (pontuacao < 600) return 4;
   return 5;
+}
+
+// Processa a reprodução sem travamento (non-blocking) da melodia de fundo
+void processarMusicaDeFundo() {
+  // Se houver uma interrupção ativa por efeitos sonoros (acerto, erro ou perda)
+  if (emInterrupcaoSom) {
+    if (millis() >= tempoFimInterrupcao) {
+      emInterrupcaoSom = false;
+      // Força reiniciar o tempo para a próxima nota da melodia rodar imediatamente
+      tempoInicioNota = 0; 
+    } else {
+      // Continua tocando o som de efeito especial (não avança a música de fundo)
+      return;
+    }
+  }
+
+  // Toca a melodia de fundo no tempo adequado
+  unsigned long agora = millis();
+  if (agora - tempoInicioNota >= duracaoNotaAtual) {
+    // Avança para a próxima nota
+    notaAtualMelodia = (notaAtualMelodia + 1) % NUM_NOTAS_MELODIA;
+    int frequencia = melodiaNotas[notaAtualMelodia];
+    duracaoNotaAtual = melodiaTempos[notaAtualMelodia];
+    tempoInicioNota = agora;
+
+    if (frequencia > 0) {
+      tone(BUZZER_PIN, frequencia);
+    } else {
+      noTone(BUZZER_PIN);
+    }
+  }
+}
+
+// Lê os comandos vindos da Ponte Serial e atualiza as flags de clique correspondentes
+void lerSerial() {
+  while (Serial.available() > 0) {
+    char cmd = Serial.read();
+    if (cmd == 'G') {
+      clickGreenSerial = true;
+    } else if (cmd == 'Y') {
+      clickYellowSerial = true;
+    } else if (cmd == 'R') {
+      clickRedSerial = true;
+    } else if (cmd == 'B') {
+      clickBlueSerial = true;
+    } else if (cmd == 'S') {
+      // Trava de segurança contra ruídos na porta serial:
+      // Espera até 10ms pelo caractere de confirmação 'T'
+      unsigned long inicioEspera = millis();
+      while (Serial.available() == 0 && millis() - inicioEspera < 10) {
+        // Aguarda
+      }
+      if (Serial.available() > 0) {
+        char cmd2 = Serial.read();
+        if (cmd2 == 'T') {
+          clickStartSerial = true;
+        }
+      }
+    }
+  }
 }

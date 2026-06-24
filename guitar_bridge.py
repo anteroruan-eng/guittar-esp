@@ -19,6 +19,7 @@ BOTAO_VERDE_IDX = 7      # Geralmente botão 0 ou 2 (Verde -> 'G')
 BOTAO_VERMELHO_IDX = 1   # Geralmente botão 1 ou 3 (Vermelho -> 'R')
 BOTAO_AZUL_IDX = 2       # Geralmente botão 2 ou 0 (Azul -> 'B')
 BOTAO_AMARELO_IDX = 0    # Geralmente botão 3 (Amarelo -> 'Y')
+BOTAO_START_IDX = 9      # Geralmente botão 9 ou 8 (Start -> 'S')
 # ==============================================================================
 
 # Inicialização do Pygame e subsistema de Joystick
@@ -107,6 +108,9 @@ def main():
                     elif btn_id == BOTAO_AMARELO_IDX:
                         char_enviar = 'Y'
                         cor_nome = "AMARELO (Yellow)"
+                    elif btn_id == BOTAO_START_IDX:
+                        char_enviar = 'ST'
+                        cor_nome = "START (Start / Pause)"
 
                     # Envio e Log
                     if char_enviar:
