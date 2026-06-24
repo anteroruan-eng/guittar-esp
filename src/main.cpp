@@ -8,7 +8,7 @@
 #define NUM_LEDS      79 // 19 + 20 + 20 + 20 = 79 leds
 #define BRIGHTNESS    255
 #define LED_TYPE      WS2811
-#define COLOR_ORDER   GRB
+#define COLOR_ORDER   BRG
 
 // Configurações das Pistas
 #define NUM_PISTAS     4
@@ -43,8 +43,8 @@ EstadoJogo estadoAtual = ESTADO_MENU;
 int pontuacao = 0;
 int vidas = 5;
 unsigned long ultimoMovimento = 0;
-int velocidade = 140; // Tempo em milissegundos para a nota descer 1 bloco (inicia em 140ms)
-int chanceDeNota = 12; // Probabilidade de gerar uma nota nova por pista (em %)
+int velocidade = 300; // Tempo em milissegundos para a nota descer 1 bloco (inicia em 300ms)
+int chanceDeNota = 5; // Probabilidade inicial de gerar uma nota nova por pista (em %)
 
 // Estados anteriores dos botões para detecção de clique (borda de descida)
 bool antStart = HIGH;
@@ -151,25 +151,28 @@ void somGameOver() {
 }
 
 // Retorna o índice físico do LED com base na pista (0 a 3) e no passo lógico
-// pista 0: Verde, pista 1: Amarela, pista 2: Vermelha, pista 3: Azul
+// pista 0: Verde, pista 1: Vermelha, pista 2: Amarela, pista 3: Azul
 // Para pista 0, passo vai de 0 a 18 (19 leds). Para as demais, de 0 a 19 (20 leds).
 int obterIndiceLED(int pista, int passo) {
-  int inicio = 0;
   if (pista == 0) {
-    inicio = 0;
+    // Pista 0 (Verde): 19 LEDs, zig-zag invertido (índices 18 a 0)
+    return 18 - passo;
   } else if (pista == 1) {
-    inicio = 19;
+    // Pista 1 (Vermelha): 20 LEDs, direção normal (índices 19 a 38)
+    return 19 + passo;
   } else if (pista == 2) {
-    inicio = 39;
+    // Pista 2 (Amarela): 20 LEDs, zig-zag invertido (índices 58 a 39)
+    return 58 - passo;
   } else if (pista == 3) {
-    inicio = 59;
+    // Pista 3 (Azul): 20 LEDs, direção normal (índices 59 a 78)
+    return 59 + passo;
   }
-  return inicio + passo;
+  return 0;
 }
 
 // Desenha a linha de mira visual fraca para orientar o jogador
 void desenharCenario() {
-  for (int pista = 0; pista < 4; pista++) {
+  for (int pista = 0; pista < NUM_PISTAS; pista++) {
     int passoMira = (pista == 0) ? 16 : 17;
     int idxMira = obterIndiceLED(pista, passoMira);
     if (leds[idxMira] == CRGB::Black) {
@@ -181,13 +184,13 @@ void desenharCenario() {
 // Move as notas nas pistas ativas
 void moverNotas() {
   // 1. Detectar notas que chegaram ao fim da pista e passaram sem clique (miss)
-  for (int pista = 0; pista < 4; pista++) {
+  for (int pista = 0; pista < NUM_PISTAS; pista++) {
     int passoFim = (pista == 0) ? 18 : 19;
     int idxFim = obterIndiceLED(pista, passoFim);
     CRGB corNota = leds[idxFim];
     if ((pista == 0 && corNota == CRGB::Green) ||
-        (pista == 1 && corNota == CRGB::Yellow) ||
-        (pista == 2 && corNota == CRGB::Red) ||
+        (pista == 1 && corNota == CRGB::Red) ||
+        (pista == 2 && corNota == CRGB::Yellow) ||
         (pista == 3 && corNota == CRGB::Blue)) {
       perdeuNota();
     }
@@ -209,8 +212,8 @@ void moverNotas() {
     int idxInicio = obterIndiceLED(pista, 0);
     if (random(0, 100) < chanceDeNota) {
       if (pista == 0) leds[idxInicio] = CRGB::Green;
-      else if (pista == 1) leds[idxInicio] = CRGB::Yellow;
-      else if (pista == 2) leds[idxInicio] = CRGB::Red;
+      else if (pista == 1) leds[idxInicio] = CRGB::Red;
+      else if (pista == 2) leds[idxInicio] = CRGB::Yellow;
       else if (pista == 3) leds[idxInicio] = CRGB::Blue;
     } else {
       leds[idxInicio] = CRGB::Black;
@@ -260,22 +263,22 @@ void verificarJogada() {
     }
   }
 
-  // Pista 1: Amarela (Yellow)
-  if (clickYellow) {
+  // Pista 1: Vermelha (Red)
+  if (clickRed && NUM_PISTAS > 1) {
     int idx19 = obterIndiceLED(1, 19);
     int idx18 = obterIndiceLED(1, 18);
-    if (leds[idx19] == CRGB::Yellow || leds[idx18] == CRGB::Yellow) {
+    if (leds[idx19] == CRGB::Red || leds[idx18] == CRGB::Red) {
       acertouNota(1);
     } else {
       errouNota(1);
     }
   }
 
-  // Pista 2: Vermelha (Red)
-  if (clickRed) {
+  // Pista 2: Amarela (Yellow)
+  if (clickYellow && NUM_PISTAS > 2) {
     int idx19 = obterIndiceLED(2, 19);
     int idx18 = obterIndiceLED(2, 18);
-    if (leds[idx19] == CRGB::Red || leds[idx18] == CRGB::Red) {
+    if (leds[idx19] == CRGB::Yellow || leds[idx18] == CRGB::Yellow) {
       acertouNota(2);
     } else {
       errouNota(2);
@@ -283,7 +286,7 @@ void verificarJogada() {
   }
 
   // Pista 3: Azul (Blue)
-  if (clickBlue) {
+  if (clickBlue && NUM_PISTAS > 3) {
     int idx19 = obterIndiceLED(3, 19);
     int idx18 = obterIndiceLED(3, 18);
     if (leds[idx19] == CRGB::Blue || leds[idx18] == CRGB::Blue) {
@@ -376,7 +379,8 @@ void verificarBotaoStart() {
       // Começa novo jogo
       pontuacao = 0;
       vidas = 5;
-      velocidade = 100;
+      velocidade = 300;
+      chanceDeNota = 5;
       estadoAtual = ESTADO_JOGANDO;
       FastLED.clear();
       desenharCenario();
@@ -415,7 +419,7 @@ void mostrarMenuInicial() {
   FastLED.show();
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("  LED HERO S3   ");
+  lcd.print("   GUITAR LED   ");
   lcd.setCursor(0, 1);
   lcd.print("Aperte Start -> ");
 }
@@ -446,18 +450,23 @@ void atualizarPlacar() {
   }
 }
 
-// Altera a velocidade da descida das notas com base na pontuação
+// Altera a velocidade e a frequência de descida das notas com base na pontuação
 void atualizarVelocidade() {
   if (pontuacao < 100) {
-    velocidade = 140;
+    velocidade = 300;
+    chanceDeNota = 5;
   } else if (pontuacao < 200) {
-    velocidade = 120;
+    velocidade = 260;
+    chanceDeNota = 7;
   } else if (pontuacao < 400) {
-    velocidade = 100;
+    velocidade = 220;
+    chanceDeNota = 9;
   } else if (pontuacao < 600) {
-    velocidade = 80;
+    velocidade = 180;
+    chanceDeNota = 11;
   } else {
-    velocidade = 60;
+    velocidade = 140;
+    chanceDeNota = 13;
   }
 }
 
